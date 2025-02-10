@@ -19,12 +19,12 @@ import Button from '@mui/material/Button';
 
 // パンくずリストのマッピング
 const breadcrumbNameMap: { [key: string]: string } = {
-  'test': 'Test',
+  'test': 'test',
 };
 
 // リストアイテムリンクコンポーネント
-function ListItemLink(props: { to: string; open?: boolean; onClick?: () => void }) {
-  const { to, open, onClick } = props;
+function ListItemLink(props: { to: string; open?: boolean; onClick?: () => void; children: React.ReactNode }) {
+  const { to, open, onClick} = props;
   const primary = breadcrumbNameMap[to] || to;
 
   let icon = null;
@@ -106,10 +106,14 @@ function FolderTree({ folders, parentPath = '', onSelectFolder }: { folders: { [
   return (
     <List>
       {Object.keys(folders).sort().map((folder) => {
-        const fullPath = `${parentPath}/${folder}`;
+        const fullPath = parentPath ? `${parentPath}/${folder}` : folder;
+        const displayPath = folder; // 表示するパスはフォルダ名のみ
+        console.log('folder:', folder);
         return (
           <React.Fragment key={fullPath}>
-            <ListItemLink to={fullPath} onClick={() => onSelectFolder(fullPath)} />
+            <ListItemLink to={fullPath} onClick={() => onSelectFolder(fullPath)}>
+              {displayPath}
+            </ListItemLink>
             {folders[folder].folders && (
               <Collapse in={true} timeout="auto" unmountOnExit>
                 <FolderTree folders={folders[folder].folders} parentPath={fullPath} onSelectFolder={onSelectFolder} />
@@ -155,7 +159,7 @@ function LowerSection({ files, selectedFiles, handleSelectFile, handleDeleteFold
         value={selectedUploadFolder}
         onChange={(e) => setSelectedUploadFolder(e.target.value as string)}
       >
-        <MenuItem value="home">Root</MenuItem>
+        <MenuItem value="/">Root</MenuItem>
         {getAllFolders(files).map((folder) => (
           <MenuItem key={folder} value={folder}>{folder}</MenuItem>
         ))}
@@ -178,7 +182,7 @@ function LowerSection({ files, selectedFiles, handleSelectFile, handleDeleteFold
         onChange={(e) => setSelectedParentParentFolder(e.target.value as string)}
         displayEmpty
       >
-        <MenuItem value="home">Root</MenuItem>
+        <MenuItem value="/">Root</MenuItem>
         {getAllFolders(files).map((folder) => (
           <MenuItem key={folder} value={folder}>{folder}</MenuItem>
         ))}
@@ -229,15 +233,16 @@ function SelectedFolderFiles({ selectedFolder, files }: { selectedFolder: string
 // メインアプリコンポーネント
 function App() {
   const [files, setFiles] = useState<{ [key: string]: { files: File[], folders: { [key: string]: any } } }>({
-    'home/test': { files: [], folders: {} },
+    '/test': { files: [], folders: {} },
   });
-  const [selectedToFolder, setSelectedToFolder] = useState('home/test');
-  const [selectedUploadFolder, setSelectedUploadFolder] = useState('home/test');
+  const [selectedToFolder, setSelectedToFolder] = useState('/test');
+  const [selectedUploadFolder, setSelectedUploadFolder] = useState('/test');
   const [selectedFiles, setSelectedFiles] = useState<{ file: File, folder: string }[]>([]);
+  const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
-  const [selectedParentFolder, setSelectedParentFolder] = useState('home');
-  const [selectedFolder, setSelectedFolder] = useState('home/test');
+  const [selectedParentFolder, setSelectedParentFolder] = useState('/');
+  const [selectedFolder, setSelectedFolder] = useState('/test');
 
   // ファイルアップロードのハンドラー
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,8 +263,8 @@ function App() {
     });
   };
 
-  // ファイル移動のハンドラー
-  const handleMoveFiles = (toFolder: string) => {
+  // ファイルとフォルダ移動のハンドラー
+  const handleMoveFilesAndFolders = (toFolder: string) => {
     const fromFolder = selectedFiles.length > 0 ? selectedFiles[0].folder : '';
     if (!fromFolder) return;
 
@@ -277,20 +282,36 @@ function App() {
         setError(`フォルダ "${toFolder}" が存在しません。`);
         return prevFiles;
       }
+
+      // ファイルの移動
       const filesToMove = selectedFiles.map((selected) => selected.file);
+      const updatedFromFolderFiles = prevFiles[fromFolder].files.filter((file: File) => !filesToMove.includes(file));
+      const updatedToFolderFiles = [...prevFiles[toFolder].files, ...filesToMove];
+
+      // フォルダの移動
+      const foldersToMove = selectedFolders.reduce((acc, folder) => {
+        acc[folder] = prevFiles[fromFolder].folders[folder];
+        delete prevFiles[fromFolder].folders[folder];
+        return acc;
+      }, {} as { [key: string]: any });
+
       return {
         ...prevFiles,
         [fromFolder]: {
           ...prevFiles[fromFolder],
-          files: prevFiles[fromFolder].files.filter((file: File) => !filesToMove.includes(file)),
+          files: updatedFromFolderFiles,
+          folders: { ...prevFiles[fromFolder].folders },
         },
         [toFolder]: {
           ...prevFiles[toFolder],
-          files: [...prevFiles[toFolder].files, ...filesToMove],
+          files: updatedToFolderFiles,
+          folders: { ...prevFiles[toFolder].folders, ...foldersToMove },
         },
       };
     });
+
     setSelectedFiles([]); // ファイル移動後に選択をリセット
+    setSelectedFolders([]); // フォルダ移動後に選択をリセット
     setError(null); // エラーをリセット
   };
 
@@ -309,7 +330,7 @@ function App() {
   // 新しいフォルダを追加するハンドラー
   const handleAddFolder = () => {
     if (!newFolderName) return;
-    const newFolderPath = `${selectedParentFolder}/${newFolderName}`;
+    const newFolderPath = selectedParentFolder === '/' ? `/${newFolderName}` : `${selectedParentFolder}/${newFolderName}`;
     if (files[newFolderPath]) {
       setError('同じ名前のフォルダが既に存在します。');
       return;
@@ -329,12 +350,7 @@ function App() {
       return restFolders;
     });
     setSelectedFiles((prevSelectedFiles) => prevSelectedFiles.filter((selected) => selected.folder !== folder));
-  };
-
-  // フォルダ選択のハンドラー
-  const handleSelectFolder = (folder: string) => {
-    console.log('Selected folder:', folder);
-    setSelectedFolder(folder.startsWith('/') ? folder.slice(1) : folder);
+    setSelectedFolders((prevSelectedFolders) => prevSelectedFolders.filter((selected) => selected !== folder));
   };
 
   return (
@@ -346,7 +362,7 @@ function App() {
             selectedFiles={selectedFiles.map((selected) => selected.file)}
             handleSelectFile={handleSelectFile}
             handleDeleteFolder={handleDeleteFolder}
-            onSelectFolder={handleSelectFolder}
+            onSelectFolder={setSelectedFolder}
           />
           <LowerSection
             files={files}
@@ -358,7 +374,7 @@ function App() {
             handleFileUpload={handleFileUpload}
             selectedToFolder={selectedToFolder}
             setSelectedToFolder={setSelectedToFolder}
-            handleMoveFiles={handleMoveFiles}
+            handleMoveFiles={handleMoveFilesAndFolders}
             error={error}
             selectedParentFolder={selectedParentFolder}
             setSelectedParentParentFolder={setSelectedParentFolder}

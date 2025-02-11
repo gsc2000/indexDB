@@ -108,7 +108,6 @@ function FolderTree({ folders, parentPath = '', onSelectFolder }: { folders: { [
       {Object.keys(folders).sort().map((folder) => {
         const fullPath = parentPath ? `${parentPath}/${folder}` : folder;
         const displayPath = folder; // 表示するパスはフォルダ名のみ
-        console.log('folder:', folder);
         return (
           <React.Fragment key={fullPath}>
             <ListItemLink to={fullPath} onClick={() => onSelectFolder(fullPath)}>
@@ -209,10 +208,6 @@ function LowerSection({ files, selectedFiles, handleSelectFile, handleDeleteFold
 
 // 選択されたフォルダのファイルを表示するコンポーネント
 function SelectedFolderFiles({ selectedFolder, files }: { selectedFolder: string, files: { [key: string]: any } }) {
-  console.log('Selected folder:', selectedFolder);
-  console.log('Files:', files);
-  console.log('Files in selected folder:', files[selectedFolder]?.files);
-
   return (
     <Box sx={{ bgcolor: 'lightgray', p: 2, width: '100%' }}>
       <Typography variant="h6">Files in {selectedFolder}</Typography>
@@ -232,6 +227,14 @@ function SelectedFolderFiles({ selectedFolder, files }: { selectedFolder: string
 
 // メインアプリコンポーネント
 function App() {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<{ folder: string, file: string }[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState('/test');
+
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+    setSearchResults(handleSearchFiles(event.target.value));
+  };
   const [files, setFiles] = useState<{ [key: string]: { files: File[], folders: { [key: string]: any } } }>({
     '/test': { files: [], folders: {} },
   });
@@ -242,7 +245,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [selectedParentFolder, setSelectedParentFolder] = useState('/');
-  const [selectedFolder, setSelectedFolder] = useState('/test');
+  // const [selectedFolder, setSelectedFolder] = useState('/test');
 
   // ファイルアップロードのハンドラー
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,10 +356,54 @@ function App() {
     setSelectedFolders((prevSelectedFolders) => prevSelectedFolders.filter((selected) => selected !== folder));
   };
 
+  // ファイル検索のハンドラー
+  const handleSearchFiles = (searchTerm: string) => {
+    if (!searchTerm) return [];
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    const results: { folder: string, file: string }[] = [];
+    Object.keys(files).forEach((folder) => {
+      files[folder].files.forEach((file: File) => {
+        if (file.name.toLowerCase().includes(lowerCaseSearchTerm)) {
+          results.push({ folder, file: file.name });
+        }
+      });
+    });
+    return results;
+  };
+
+  // 検索結果を表示するコンポーネント
+  function SearchResults({ results, onSelectFolder }: { results: { folder: string, file: string }[], onSelectFolder: (folder: string) => void }) {
+    return (
+      <Box sx={{ bgcolor: 'lightyellow', p: 2, width: '100%' }}>
+        <Typography variant="h6">Search Results</Typography>
+        <List>
+          {results.length > 0 ? (
+            results.map((result, index) => (
+              <ListItemButton key={index} onClick={() => onSelectFolder(result.folder)}>
+                <ListItemText primary={`${result.file} in ${result.folder}`} />
+              </ListItemButton>
+            ))
+          ) : (
+            <Typography>No files found</Typography>
+          )}
+        </List>
+      </Box>
+    );
+  }
+
   return (
     <Router>
       <Box sx={{ display: 'flex', flexDirection: 'row', width: '100%' }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', width: '50%' }}>
+        <TextField
+            value={searchTerm}
+            onChange={handleSearchChange}
+            placeholder="Search files"
+            variant="outlined"
+            fullWidth
+            margin="normal"
+          />
+          <SearchResults results={searchResults} onSelectFolder={setSelectedFolder} />
           <UpperSection
             files={files}
             selectedFiles={selectedFiles.map((selected) => selected.file)}
